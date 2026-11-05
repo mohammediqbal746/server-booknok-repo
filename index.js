@@ -96,7 +96,6 @@ async function run() {
             const updatedData = req.body;
             const filter = { _id: new ObjectId(id) };
             const updateDoc = { $set: updatedData };
-            
             const result = await bookCollection.updateOne(filter, updateDoc);
             res.status(200).json({ success: true, result });
         } catch (error) {
@@ -108,7 +107,6 @@ async function run() {
         try {
             const id = req.params.id;
             const filter = { _id: new ObjectId(id) };
-            
             const result = await bookCollection.deleteOne(filter);
             res.status(200).json({ success: true, result });
         } catch (error) {
@@ -138,6 +136,45 @@ async function run() {
         }
     });
 
+
+    // User er borrow kora boi dekhar API
+    app.get('/api/borrows', async (req, res) => {
+        try {
+            let query = {};
+            if (req.query?.email) {
+                query = { userEmail: req.query.email };
+            }
+            const borrows = await borrowCollection.find(query).toArray();
+            res.status(200).json({ success: true, borrows });
+        } catch (error) {
+            res.status(500).json({ success: false, message: "Error fetching borrows!" });
+        }
+    });
+
+    // Boi return korar API (Borrow record delete + quantity increase)
+    app.delete('/api/borrows/:id', async (req, res) => {
+        try {
+            const id = req.params.id;
+            const filter = { _id: new ObjectId(id) };
+
+            const borrowRecord = await borrowCollection.findOne(filter);
+            if (!borrowRecord) {
+                return res.status(404).json({ success: false, message: "Record not found!" });
+            }
+
+            // Borrow collection theke delete kora
+            await borrowCollection.deleteOne(filter);
+
+            // Books collection e quantity +1 kora
+            const bookFilter = { _id: new ObjectId(borrowRecord.bookId) };
+            const updateDoc = { $inc: { quantity: 1 } };
+            await bookCollection.updateOne(bookFilter, updateDoc);
+
+            res.status(200).json({ success: true, message: "Book returned successfully!" });
+        } catch (error) {
+            res.status(500).json({ success: false, message: "Error returning book" });
+        }
+    });
   } finally {
     // Keep connection alive
   }
