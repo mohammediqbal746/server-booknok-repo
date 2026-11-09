@@ -8,20 +8,15 @@ import jwt from 'jsonwebtoken';
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 5000;
 
+// Middleware
 app.use(cors({
-    origin: [process.env.CLIENT_URL],
+    origin: [process.env.CLIENT_URL || 'http://localhost:3000'],
     credentials: true
 }));
-
 app.use(express.json());
 
-// হোমপেজ রুটটি সবার ওপরে নিয়ে আসা হলো যাতে Vercel এটি সরাসরি পায়
-app.get('/', (req, res) => {
-    res.send('BookNook Server is running...');
-});
-
+// MongoDB Connection
 const uri = process.env.MONGODB_URI;
 const client = new MongoClient(uri, {
   serverApi: {
@@ -31,176 +26,106 @@ const client = new MongoClient(uri, {
   }
 });
 
-async function run() {
-  try {
-    await client.connect();
-    
-    const bookCollection = client.db("bookNookDB").collection("books");
-    const borrowCollection = client.db("bookNookDB").collection("borrows");
-    console.log("Successfully connected to MongoDB!");
+// Database variables
+let bookCollection;
+let borrowCollection;
 
-    app.post('/api/jwt', async (req, res) => {
-        const user = req.body;
-        const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '7d' });
-        res.send({ success: true, token });
-    });
-
-    const verifyToken = (req, res, next) => {
-        const authorization = req.headers.authorization;
-        if (!authorization) {
-            return res.status(401).json({ success: false, message: 'Unauthorized access!' });
-        }
-        
-        const token = authorization.split(' ')[1];
-        jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
-            if (err) {
-                return res.status(403).json({ success: false, message: 'Forbidden access!' });
-            }
-            req.decoded = decoded;
-            next();
-        });
-    };
-
-    app.post('/api/books', verifyToken, async (req, res) => {
-        try {
-            const newBook = req.body;
-            const result = await bookCollection.insertOne(newBook);
-            res.status(201).json({ success: true, result });
-        } catch (error) {
-            res.status(500).json({ success: false, message: "Error adding book!" });
-        }
-    });
-
-    app.get('/api/books', async (req, res) => {
-        try {
-            let query = {};
-            if (req.query?.email) {
-                query = { adderEmail: req.query.email };
-            }
-            const books = await bookCollection.find(query).toArray();
-            res.status(200).json({ success: true, books });
-        } catch (error) {
-            res.status(500).json({ success: false, message: "Error fetching books!" });
-        }
-    });
-
-    app.get('/api/books/:id', async (req, res) => {
-        try {
-            const id = req.params.id;
-            const query = { _id: new ObjectId(id) };
-            const book = await bookCollection.findOne(query);
-            res.status(200).json({ success: true, book });
-        } catch (error) {
-            res.status(500).json({ success: false, message: "Error fetching book details" });
-        }
-    });
-
-    app.patch('/api/books/:id', verifyToken, async (req, res) => {
-        try {
-            const id = req.params.id;
-            const updatedData = req.body;
-            const filter = { _id: new ObjectId(id) };
-            const updateDoc = { $set: updatedData };
-            const result = await bookCollection.updateOne(filter, updateDoc);
-            res.status(200).json({ success: true, result });
-        } catch (error) {
-            res.status(500).json({ success: false, message: "Error updating book" });
-        }
-    });
-
-    app.delete('/api/books/:id', verifyToken, async (req, res) => {
-        try {
-            const id = req.params.id;
-            const filter = { _id: new ObjectId(id) };
-            const result = await bookCollection.deleteOne(filter);
-            res.status(200).json({ success: true, result });
-        } catch (error) {
-            res.status(500).json({ success: false, message: "Error deleting book" });
-        }
-    });
-
-    app.post('/api/borrows', verifyToken, async (req, res) => {
-        try {
-            const borrowData = req.body;
-            const { bookId, userEmail } = borrowData;
-
-            const alreadyBorrowed = await borrowCollection.findOne({ bookId, userEmail });
-            if (alreadyBorrowed) {
-                return res.status(400).json({ success: false, message: "You have already borrowed this book!" });
-            }
-
-            await borrowCollection.insertOne(borrowData);
-
-            const filter = { _id: new ObjectId(bookId) };
-            const updateDoc = { $inc: { quantity: -1 } };
-            await bookCollection.updateOne(filter, updateDoc);
-
-            res.status(201).json({ success: true, message: "Book borrowed successfully!" });
-        } catch (error) {
-            res.status(500).json({ success: false, message: "Error borrowing book!" });
-        }
-    });
-
-    app.get('/api/borrows', async (req, res) => {
-        try {
-            let query = {};
-            if (req.query?.email) {
-                query = { userEmail: req.query.email };
-            }
-            const borrows = await borrowCollection.find(query).toArray();
-            res.status(200).json({ success: true, borrows });
-        } catch (error) {
-            res.status(500).json({ success: false, message: "Error fetching borrows!" });
-        }
-    });
-
-    app.delete('/api/borrows/:id', async (req, res) => {
-        try {
-            const id = req.params.id;
-            const filter = { _id: new ObjectId(id) };
-
-            const borrowRecord = await borrowCollection.findOne(filter);
-            if (!borrowRecord) {
-                return res.status(404).json({ success: false, message: "Record not found!" });
-            }
-
-            await borrowCollection.deleteOne(filter);
-
-            const bookFilter = { _id: new ObjectId(borrowRecord.bookId) };
-            const updateDoc = { $inc: { quantity: 1 } };
-            await bookCollection.updateOne(bookFilter, updateDoc);
-
-            res.status(200).json({ success: true, message: "Book returned successfully!" });
-        } catch (error) {
-            res.status(500).json({ success: false, message: "Error returning book" });
-        }
-    });
-  } finally {
-    // Keep connection alive
-  }
+// Connect to MongoDB once
+async function connectDB() {
+    if (!bookCollection) {
+        await client.connect();
+        const db = client.db("bookNookDB");
+        bookCollection = db.collection("books");
+        borrowCollection = db.collection("borrows");
+        console.log("Successfully connected to MongoDB!");
+    }
 }
-run().catch(console.dir);
+// Initialize connection
+connectDB().catch(console.dir);
 
-app.get('/api/verify-user', async (req, res) => {
-    try {
-        const session = await auth.api.getSession({
-            headers: req.headers
-        });
 
-        if (!session) {
-            return res.status(401).json({ message: "Not logged in!" });
+// --- Routes (Outside of run function) ---
+
+app.get('/', (req, res) => {
+    res.send('BookNook Server is running perfectly on Vercel!');
+});
+
+// JWT Token Route
+app.post('/api/jwt', async (req, res) => {
+    const user = req.body;
+    const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '7d' });
+    res.send({ success: true, token });
+});
+
+// Verify Token Middleware
+const verifyToken = (req, res, next) => {
+    const authorization = req.headers.authorization;
+    if (!authorization) {
+        return res.status(401).json({ success: false, message: 'Unauthorized access!' });
+    }
+    
+    const token = authorization.split(' ')[1];
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        if (err) {
+            return res.status(403).json({ success: false, message: 'Forbidden access!' });
         }
-        res.json({ message: "Verified successfully!", user: session.user });
+        req.decoded = decoded;
+        next();
+    });
+};
+
+// Books API
+app.get('/api/books', async (req, res) => {
+    try {
+        await connectDB();
+        let query = {};
+        if (req.query?.email) {
+            query = { adderEmail: req.query.email };
+        }
+        const books = await bookCollection.find(query).toArray();
+        res.status(200).json({ success: true, books });
     } catch (error) {
-        res.status(500).json({ error: "Server error" });
+        res.status(500).json({ success: false, message: "Error fetching books!" });
     }
 });
 
-// লোকাল ডেভেলপমেন্টের জন্য app.listen
-if (process.env.NODE_ENV !== 'production') {
-    app.listen(port, () => {
-        console.log(`Server is running on port ${port}`);
-    });
-}
+app.post('/api/books', verifyToken, async (req, res) => {
+    try {
+        await connectDB();
+        const newBook = req.body;
+        const result = await bookCollection.insertOne(newBook);
+        res.status(201).json({ success: true, result });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Error adding book!" });
+    }
+});
 
+app.get('/api/books/:id', async (req, res) => {
+    try {
+        await connectDB();
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const book = await bookCollection.findOne(query);
+        res.status(200).json({ success: true, book });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Error fetching book details" });
+    }
+});
+
+// Borrows API
+app.get('/api/borrows', async (req, res) => {
+    try {
+        await connectDB();
+        let query = {};
+        if (req.query?.email) {
+            query = { userEmail: req.query.email };
+        }
+        const borrows = await borrowCollection.find(query).toArray();
+        res.status(200).json({ success: true, borrows });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Error fetching borrows!" });
+    }
+});
+
+// Export for Vercel Serverless
 export default app;
