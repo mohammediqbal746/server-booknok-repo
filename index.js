@@ -8,9 +8,7 @@ import jwt from 'jsonwebtoken';
 dotenv.config();
 
 const app = express();
-// local host:5000//
 const port = process.env.PORT || 5000;
-
 
 app.use(cors({
     origin: [process.env.CLIENT_URL],
@@ -18,6 +16,11 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// হোমপেজ রুটটি সবার ওপরে নিয়ে আসা হলো যাতে Vercel এটি সরাসরি পায়
+app.get('/', (req, res) => {
+    res.send('BookNook Server is running...');
+});
 
 const uri = process.env.MONGODB_URI;
 const client = new MongoClient(uri, {
@@ -138,8 +141,6 @@ async function run() {
         }
     });
 
-
-    // User er borrow kora boi dekhar API
     app.get('/api/borrows', async (req, res) => {
         try {
             let query = {};
@@ -153,7 +154,6 @@ async function run() {
         }
     });
 
-    // Boi return korar API (Borrow record delete + quantity increase)
     app.delete('/api/borrows/:id', async (req, res) => {
         try {
             const id = req.params.id;
@@ -164,10 +164,8 @@ async function run() {
                 return res.status(404).json({ success: false, message: "Record not found!" });
             }
 
-            // Borrow collection theke delete kora
             await borrowCollection.deleteOne(filter);
 
-            // Books collection e quantity +1 kora
             const bookFilter = { _id: new ObjectId(borrowRecord.bookId) };
             const updateDoc = { $inc: { quantity: 1 } };
             await bookCollection.updateOne(bookFilter, updateDoc);
@@ -198,10 +196,11 @@ app.get('/api/verify-user', async (req, res) => {
     }
 });
 
-app.get('/', (req, res) => {
-    res.send('BookNook Server is running...');
-});
+// লোকাল ডেভেলপমেন্টের জন্য app.listen
+if (process.env.NODE_ENV !== 'production') {
+    app.listen(port, () => {
+        console.log(`Server is running on port ${port}`);
+    });
+}
 
-app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
-});
+export default app;
