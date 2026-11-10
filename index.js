@@ -3,24 +3,33 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { MongoClient, ServerApiVersion, ObjectId } from 'mongodb';
 import { auth } from './auth.js';
+import { toNodeHandler } from "better-auth/node";
 import jwt from 'jsonwebtoken';
 
 dotenv.config();
 
 const app = express();
 
-// Middleware
-app.use(cors({
-  origin: [
-    process.env.CLIENT_URL,
-    'http://localhost:3000',
-    'https://client-booknook-repo1-nu.vercel.app'
-  ],
-  credentials: true
-}));
+// CORS Settings for Vercel and Local
+const corsOptions = {
+    origin: [
+        'http://localhost:3000',
+        'https://client-booknook-repo1.vercel.app',
+        'https://client-booknook-repo1-nu.vercel.app',
+        process.env.CLIENT_URL
+    ],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
-// MongoDB Connection
+// Better Auth API Route Handler (MUST for better-auth)
+app.all("/api/auth/*", toNodeHandler(auth));
+
+// MongoDB Connection Setup
 const uri = process.env.MONGODB_URI;
 const client = new MongoClient(uri, {
   serverApi: {
@@ -30,11 +39,9 @@ const client = new MongoClient(uri, {
   }
 });
 
-// Database variables
 let bookCollection;
 let borrowCollection;
 
-// Connect to MongoDB once
 async function connectDB() {
     if (!bookCollection) {
         await client.connect();
@@ -44,30 +51,26 @@ async function connectDB() {
         console.log("Successfully connected to MongoDB!");
     }
 }
-// Initialize connection
 connectDB().catch(console.dir);
 
 
-// --- Routes (Outside of run function) ---
-
+// --- Standard Routes ---
 app.get('/', (req, res) => {
     res.send('BookNook Server is running perfectly on Vercel!');
 });
 
-// JWT Token Route
+// JWT Route
 app.post('/api/jwt', async (req, res) => {
     const user = req.body;
     const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '7d' });
     res.send({ success: true, token });
 });
 
-// Verify Token Middleware
 const verifyToken = (req, res, next) => {
     const authorization = req.headers.authorization;
     if (!authorization) {
         return res.status(401).json({ success: false, message: 'Unauthorized access!' });
     }
-    
     const token = authorization.split(' ')[1];
     jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
         if (err) {
@@ -131,5 +134,18 @@ app.get('/api/borrows', async (req, res) => {
     }
 });
 
-// Export for Vercel Serverless
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(500).send('Something broke!');
+});
+
+// Support both Local Run and Vercel Export
+const PORT = process.env.PORT || 5000;
+if (process.env.NODE_ENV !== 'production') {
+    app.listen(PORT, () => {
+        console.log(`Server is running locally on port ${PORT}`);
+    });
+}
+
 export default app;
