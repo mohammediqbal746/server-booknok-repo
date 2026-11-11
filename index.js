@@ -10,20 +10,34 @@ dotenv.config();
 
 const app = express();
 
+// অনুমোদিত ডোমেইনগুলোর লিস্ট (undefined ভ্যালু ফিল্টার করা হয়েছে)
+const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'https://client-booknook-repo1.vercel.app',
+    'https://client-booknook-repo1-nu.vercel.app',
+    process.env.CLIENT_URL
+].filter(Boolean);
+
 // CORS Settings for Vercel and Local
 const corsOptions = {
-    origin: [
-        'http://localhost:3000',
-        'https://client-booknook-repo1.vercel.app',
-        'https://client-booknook-repo1-nu.vercel.app',
-        process.env.CLIENT_URL
-    ],
+    origin: function (origin, callback) {
+        // ব্রাউজার ছাড়া অন্য রিকোয়েস্ট (যেমন Postman/Mobile) অথবা অনুমোদিত ডোমেইন হলে অনুমতি দেবে
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
 };
 
+// সব রুটের আগে CORS এবং Preflight (OPTIONS) হ্যান্ডলার যুক্ত করা হলো
 app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+
 app.use(express.json());
 
 // Better Auth API Route Handler (MUST for better-auth)
