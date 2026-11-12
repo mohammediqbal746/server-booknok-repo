@@ -40,7 +40,7 @@ app.use(cors(corsOptions));
 app.use(express.json());
 
 // Better Auth API Route Handler (MUST for better-auth) - Changed to app.all
-app.all("/api/auth/*", toNodeHandler(auth));
+app.use("/api/auth", toNodeHandler(auth));
 
 // MongoDB Connection Setup
 const uri = process.env.MONGODB_URI;
