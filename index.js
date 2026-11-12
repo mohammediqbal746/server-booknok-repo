@@ -36,7 +36,7 @@ const corsOptions = {
 
 // সব রুটের আগে CORS এবং Preflight (OPTIONS) হ্যান্ডলার যুক্ত করা হলো
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
+
 
 app.use(express.json());
 
