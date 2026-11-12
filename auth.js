@@ -12,9 +12,10 @@ export const auth = betterAuth({
     emailAndPassword: {
         enabled: true,
     },
-    trustedOrigins: [
-        process.env.CLIENT_URL,
-        "https://client-booknook-repo1-nu.vercel.app",
-        "http://localhost:3000"
-    ]
+   trustedOrigins: [
+    "http://localhost:3000",
+    "https://client-booknook-repo1.vercel.app", // Notun link
+    "https://client-booknook-repo1-nu.vercel.app",
+    process.env.CLIENT_URL
+]
 });
