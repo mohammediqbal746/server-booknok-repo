@@ -10,7 +10,7 @@ dotenv.config();
 
 const app = express();
 
-// অনুমোদিত ডোমেইনগুলোর লিস্ট (undefined ভ্যালু ফিল্টার করা হয়েছে)
+// অনুমোদিত ডোমেইনগুলোর লিস্ট (undefined ভ্যালু ফিল্টার করা হয়েছে)
 const allowedOrigins = [
     'http://localhost:3000',
     'http://localhost:5173',
@@ -22,7 +22,7 @@ const allowedOrigins = [
 // CORS Settings for Vercel and Local
 const corsOptions = {
     origin: function (origin, callback) {
-        // ব্রাউজার ছাড়া অন্য রিকোয়েস্ট (যেমন Postman/Mobile) অথবা অনুমোদিত ডোমেইন হলে অনুমতি দেবে
+        // ব্রাউজার ছাড়া অন্য রিকোয়েস্ট (যেমন Postman/Mobile) অথবা অনুমোদিত ডোমেইন হলে অনুমতি দেবে
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
@@ -37,11 +37,10 @@ const corsOptions = {
 // সব রুটের আগে CORS এবং Preflight (OPTIONS) হ্যান্ডলার যুক্ত করা হলো
 app.use(cors(corsOptions));
 
-
 app.use(express.json());
 
-// Better Auth API Route Handler (MUST for better-auth)
-app.use("/api/auth", toNodeHandler(auth));
+// Better Auth API Route Handler (MUST for better-auth) - Changed to app.all
+app.all("/api/auth/*", toNodeHandler(auth));
 
 // MongoDB Connection Setup
 const uri = process.env.MONGODB_URI;
@@ -110,7 +109,8 @@ app.get('/api/books', async (req, res) => {
     }
 });
 
-app.post('/api/books', verifyToken, async (req, res) => {
+// POST Books - Removed verifyToken for Better Auth integration
+app.post('/api/books', async (req, res) => {
     try {
         await connectDB();
         const newBook = req.body;
