@@ -25,7 +25,9 @@ const corsOptions = {
 };
 
 // সব রাউটের আগে CORS এবং Preflight (OPTIONS) হ্যান্ডলার যুক্ত করা হলো
+// সব রাউটের আগে CORS এবং Preflight (OPTIONS) হ্যান্ডলার যুক্ত করা হলো
 app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // ব্রাউজারের Preflight ব্লক খোলার মাস্টার চাবি!
 app.use(express.json());
 
 // Better Auth API Route Handler (The Master Stroke)
