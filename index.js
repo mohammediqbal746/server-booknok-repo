@@ -10,13 +10,13 @@ dotenv.config();
 
 const app = express();
 
-// CORS Settings for Vercel and Local (Fixed)
+// CORS Settings for Vercel and Local
 const corsOptions = {
     origin: [
         'http://localhost:3000',
         'http://localhost:5173',
-        'https://client-booknook-repo1.vercel.app',       // নতুন লিংক
-        'https://client-booknook-repo1-nu.vercel.app',    // পুরনো লিংক
+        'https://client-booknook-repo1.vercel.app',
+        'https://client-booknook-repo1-nu.vercel.app',
         process.env.CLIENT_URL
     ].filter(Boolean),
     credentials: true,
@@ -25,10 +25,10 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions)); //
+app.options('*', cors(corsOptions)); // Preflight Fix
 app.use(express.json());
 
-// Better Auth API Route Handler (The Master Stroke)
+// Better Auth API Route Handler
 app.use("/api/auth", (req, res) => {
     req.url = req.originalUrl;
     return toNodeHandler(auth)(req, res);
@@ -44,20 +44,16 @@ const client = new MongoClient(uri, {
   }
 });
 
-let bookCollection;
-let borrowCollection;
+// Vercel Serverless-এর জন্য অপ্টিমাইজ করা কানেকশন
+let dbInstance = null;
 
-async function connectDB() {
-    if (!bookCollection) {
-        await client.connect();
-        const db = client.db("bookNookDB");
-        bookCollection = db.collection("books");
-        borrowCollection = db.collection("borrows");
-        console.log("Successfully connected to MongoDB!");
-    }
+async function getDB() {
+    if (dbInstance) return dbInstance;
+    await client.connect();
+    dbInstance = client.db("bookNookDB");
+    console.log("Successfully connected to MongoDB!");
+    return dbInstance;
 }
-connectDB().catch(console.dir);
-
 
 // --- Standard Routes ---
 app.get('/', (req, res) => {
@@ -71,25 +67,11 @@ app.post('/api/jwt', async (req, res) => {
     res.send({ success: true, token });
 });
 
-const verifyToken = (req, res, next) => {
-    const authorization = req.headers.authorization;
-    if (!authorization) {
-        return res.status(401).json({ success: false, message: 'Unauthorized access!' });
-    }
-    const token = authorization.split(' ')[1];
-    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
-        if (err) {
-            return res.status(403).json({ success: false, message: 'Forbidden access!' });
-        }
-        req.decoded = decoded;
-        next();
-    });
-};
-
 // Books API
 app.get('/api/books', async (req, res) => {
     try {
-        await connectDB();
+        const db = await getDB();
+        const bookCollection = db.collection("books");
         let query = {};
         if (req.query?.email) {
             query = { adderEmail: req.query.email };
@@ -97,30 +79,34 @@ app.get('/api/books', async (req, res) => {
         const books = await bookCollection.find(query).toArray();
         res.status(200).json({ success: true, books });
     } catch (error) {
+        console.error("Books GET Error:", error);
         res.status(500).json({ success: false, message: "Error fetching books!" });
     }
 });
 
-// POST Books - Removed verifyToken for Better Auth integration
 app.post('/api/books', async (req, res) => {
     try {
-        await connectDB();
+        const db = await getDB();
+        const bookCollection = db.collection("books");
         const newBook = req.body;
         const result = await bookCollection.insertOne(newBook);
         res.status(201).json({ success: true, result });
     } catch (error) {
+        console.error("Books POST Error:", error);
         res.status(500).json({ success: false, message: "Error adding book!" });
     }
 });
 
 app.get('/api/books/:id', async (req, res) => {
     try {
-        await connectDB();
+        const db = await getDB();
+        const bookCollection = db.collection("books");
         const id = req.params.id;
         const query = { _id: new ObjectId(id) };
         const book = await bookCollection.findOne(query);
         res.status(200).json({ success: true, book });
     } catch (error) {
+        console.error("Book Details Error:", error);
         res.status(500).json({ success: false, message: "Error fetching book details" });
     }
 });
@@ -128,7 +114,8 @@ app.get('/api/books/:id', async (req, res) => {
 // Borrows API
 app.get('/api/borrows', async (req, res) => {
     try {
-        await connectDB();
+        const db = await getDB();
+        const borrowCollection = db.collection("borrows");
         let query = {};
         if (req.query?.email) {
             query = { userEmail: req.query.email };
@@ -136,6 +123,7 @@ app.get('/api/borrows', async (req, res) => {
         const borrows = await borrowCollection.find(query).toArray();
         res.status(200).json({ success: true, borrows });
     } catch (error) {
+        console.error("Borrows Error:", error);
         res.status(500).json({ success: false, message: "Error fetching borrows!" });
     }
 });
